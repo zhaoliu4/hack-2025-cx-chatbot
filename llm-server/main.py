@@ -1,14 +1,10 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import httpx
 from typing import List, Optional
 import logging
-# No longer need MCPHTTPClient as we use direct JSON-RPC calls
 from llm.llm_service import get_return_status_response_with_tools
-from mcp import ClientSession, StdioServerParameters, types
-from mcp.client.stdio import stdio_client
 import re
 
 # Configure logging
@@ -49,93 +45,6 @@ class LLMRequest(BaseModel):
 class LLMResponse(BaseModel):
     text: str
     tool_calls: Optional[List[dict]] = None
-
-
-# HTTP MCP server settings
-HTTP_MCP_SERVER_URL = os.environ.get("HTTP_MCP_SERVER_URL", "http://localhost:53000/mcp")
-
-
-# Sampling message handler
-async def handle_sampling_message(message):
-    """Handle sampling messages from the MCP server"""
-    logger.info(f"Sampling: {message.get('text', '')}")
-
-
-
-def transform_jsonrpc_to_openrouter_tools(jsonrpc_response):
-    """
-    Transform the JSON-RPC tools response format to OpenRouter tools format.
-
-    Args:
-        jsonrpc_response: The response from the list_tools_jsonrpc call
-
-    Returns:
-        List of tools in OpenRouter format
-    """
-    openrouter_tools = []
-
-    # Check if we have a valid response with tools
-    if (jsonrpc_response and
-            "result" in jsonrpc_response and
-            "tools" in jsonrpc_response["result"]):
-
-        # Process each tool
-        for tool in jsonrpc_response["result"]["tools"]:
-            openrouter_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["inputSchema"]  # Map inputSchema to parameters
-                }
-            })
-
-    return openrouter_tools
-
-async def list_tools():
-    """Make a direct JSON-RPC request to the MCP server to list tools."""
-    url = HTTP_MCP_SERVER_URL
-
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/list",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "roots": {
-                    "listChanged": True
-                }
-            },
-            "clientInfo": {
-                "name": "mcp",
-                "version": "0.1.0"
-            }
-        }
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-
-            return transform_jsonrpc_to_openrouter_tools(response.json())
-    except Exception as e:
-        logger.error(f"Error making JSON-RPC request to MCP server: {str(e)}")
-        return {"error": str(e)}
-
-
-# Use FastAPI's startup event to test tool availability
-@app.on_event("startup")
-async def startup_event():
-    # Startup: Test MCP server connectivity and list tools
-    try:
-        logger.info(f"Testing connection to MCP server at {HTTP_MCP_SERVER_URL}")
-        tools = await list_tools()
-        logger.info(f"MCP tools list: {tools}")
-        logger.info(f"Connection to HTTP MCP server successful")
-    except Exception as e:
-        logger.error(f"Failed to connect to MCP server: {str(e)}")
 
 
 @app.post("/chat")
@@ -206,68 +115,6 @@ def should_generate_qr(text: str) -> bool:
         'display qr'
     ]
     return any(indicator in text.lower() for indicator in qr_indicators)
-
-@app.post("/api/chat", response_model=ChatResponse)
-async def handle_chat_message(message: ChatMessage):
-    """Handle incoming chat messages"""
-    try:
-        # Format the prompt with chat history
-        formatted_prompt = format_prompt_with_history(message.current_message, message.chat_history)
-
-        # Create LLM request
-        llm_request = LLMRequest(prompt=formatted_prompt)
-
-        # Get response from OpenRouter
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "HTTP-Referer": "https://happyreturns.com",
-                    "X-Title": "Happy Returns Support"
-                },
-                json={
-                    "model": llm_request.model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": """You are a helpful Happy Returns customer support agent. 
-                            Provide clear, concise answers and use markdown formatting when appropriate.
-                            When providing confirmation codes or reference numbers, clearly label them and suggest scanning the QR code when available.
-                            Always maintain a professional and friendly tone."""
-                        },
-                        *[{"role": "user" if h["user_message"] else "assistant",
-                           "content": h["user_message"] or h["bot_response"]}
-                          for h in message.chat_history],
-                        {"role": "user", "content": message.current_message}
-                    ],
-                    "max_tokens": llm_request.max_tokens,
-                    "temperature": llm_request.temperature
-                }
-            )
-
-        if response.status_code != 200:
-            logger.error(f"OpenRouter API error: {response.text}")
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-
-        result = response.json()
-        llm_response = result["choices"][0]["message"]["content"]
-
-        # Check for confirmation code and QR code request
-        qr_code = None
-        confirmation_code = extract_confirmation_code(llm_response)
-        if confirmation_code and should_generate_qr(llm_response):
-            qr_code = confirmation_code
-
-        return ChatResponse(
-            response=llm_response,
-            chat_id=message.chat_id,
-            qrCode=qr_code
-        )
-
-    except Exception as e:
-        logger.error(f"Error handling chat message: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 def format_prompt_with_history(current_message: str, chat_history: List[dict]) -> str:
     """Format the prompt with chat history for better context"""
