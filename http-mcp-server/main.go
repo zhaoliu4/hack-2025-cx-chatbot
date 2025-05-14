@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	returnDataCastle "github.com/happyreturns/data-castle/modules/returns-service/v1/grpc/gen/protos/returns"
@@ -13,6 +14,8 @@ import (
 )
 
 func main() {
+	os.Setenv("DATABASE_CONNECTION_STRING", "postgres://username:password@db-dev.happyreturns.com/happyreturns")
+
 	app := "mcp-server"
 
 	logger := log.NewLogger(app, "local")
@@ -20,7 +23,7 @@ func main() {
 	dataCastleConnection, err := client_connector.
 		NewClientConn("returns-service", logger.Entry).
 		UseTLS().
-		SetTimeout(30 * time.Second).
+		SetTimeout(60 * time.Second).
 		Dial(dataCastleHost)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to connect to Data Castle")
