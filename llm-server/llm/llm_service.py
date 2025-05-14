@@ -4,7 +4,7 @@ import os
 import json
 import asyncio
 
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 
 # Configure OpenAI with OpenRouter
 openai.api_key = OPENROUTER_API_KEY
@@ -12,18 +12,31 @@ openai.api_base = "https://openrouter.ai/api/v1"
 
 HTTP_MCP_SERVER_URL = os.environ.get("HTTP_MCP_SERVER_URL", "http://localhost:53000/mcp")
 
+MODEL = "anthropic/claude-3.7-sonnet"
+
 # Define the system prompt separately for clarity
+# SYSTEM_PROMPT = {
+#     "role": "system",
+#     "content": (
+#         "You are a customer service expert for 'Happy Returns'. "
+#         "Your sole responsibility is to provide information about customer returns. "
+#         "You have access to tools that can look up return information when a customer provides a confirmation code. "
+#         "Always use the get_return_by_confirmation_code tool when a customer mentions their confirmation code (an 8-character string starting with 'HR'). "
+#         "You must not answer any questions or engage in conversations on any other topic. "
+#         "If a customer asks about something other than a returns, "
+#         "politely state that you can only help with return inquiries. "
+#         "Be courteous and professional in all your responses."
+#     )
+# }
 SYSTEM_PROMPT = {
     "role": "system",
     "content": (
         "You are a customer service expert for 'Happy Returns'. "
-        "Your sole responsibility is to provide information about the status of customer returns. "
-        "You have access to tools that can look up return information when a customer provides a confirmation code. "
+        "Your sole responsibility is to provide information about customer returns. "
         "Always use the get_return_by_confirmation_code tool when a customer mentions their confirmation code (an 8-character string starting with 'HR'). "
+        "Always use the get_return_by_confirmation_code tool when a customer asks any question about their return"
         "You must not answer any questions or engage in conversations on any other topic. "
-        "If a customer asks about something other than a return status, "
-        "politely state that you can only help with return status inquiries. "
-        "Be courteous and professional in all your responses."
+        "Format your responses in Markdown."
     )
 }
 
@@ -119,6 +132,7 @@ async def call_tool_jsonrpc(function_name, function_args):
             response.raise_for_status()
             
             json_response = response.json()
+            print(f"Tool call json response: {str(json_response)}")
             # Tool results are in the "result" field of the JSON-RPC response
             if "result" in json_response:
                 return json_response["result"]
@@ -159,7 +173,8 @@ def get_return_status_response_with_history(chat_history, customer_query):
     try:
         # Specify max_tokens to limit the request size
         completion = openai.ChatCompletion.create(
-            model="openai/gpt-3.5-turbo",  # Less expensive model
+            # model="openai/gpt-3.5-turbo",  # Less expensive model
+            model=MODEL,
             messages=current_conversation,
             max_tokens=1000  # Limit response length to reduce token usage
         )
@@ -220,7 +235,7 @@ async def get_return_status_response_with_tools(chat_history, customer_query):
 
         # Request the model with tools enabled
         completion = openai.ChatCompletion.create(
-            model="openai/gpt-3.5-turbo",
+            model=MODEL,
             messages=current_conversation,
             max_tokens=1000,
             tools=openai_tools,
@@ -248,18 +263,20 @@ async def get_return_status_response_with_tools(chat_history, customer_query):
                 
                 # Execute the tool via direct JSON-RPC
                 tool_result = await call_tool_jsonrpc(function_name, function_args)
+                print(f"Tool result: {tool_result}")
                 
                 # Add the tool result to the conversation
                 current_conversation.append({
                     "role": "tool",
                     "tool_call_id": tool_call["id"],
                     "name": function_name,
-                    "content": json.dumps(tool_result) if isinstance(tool_result, dict) else tool_result
+                    "content": str(tool_result)
                 })
+                print(f"Current conversation after tool call: {current_conversation}")
             
             # Make a second call to process the tool results
             second_completion = openai.ChatCompletion.create(
-                model="openai/gpt-3.5-turbo",
+                model=MODEL,
                 messages=current_conversation,
                 max_tokens=1000
             )
