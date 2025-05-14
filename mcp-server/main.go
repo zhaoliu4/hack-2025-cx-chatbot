@@ -1,11 +1,11 @@
 package main
 
 import (
-	"os"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/joho/godotenv"
 
 	returnDataCastle "github.com/happyreturns/data-castle/modules/returns-service/v1/grpc/gen/protos/returns"
 	"github.com/happyreturns/gohelpers/common"
@@ -14,7 +14,11 @@ import (
 )
 
 func main() {
-	os.Setenv("DATABASE_CONNECTION_STRING", "postgres://username:password@db-dev.happyreturns.com/happyreturns")
+    err := godotenv.Load()
+    if err != nil {
+        // Log error but continue as environment variables might be set elsewhere
+        println("Error loading .env file:", err.Error())
+    }
 
 	app := "mcp-server"
 	logger := log.NewLogger(app, "local")
@@ -63,6 +67,7 @@ func main() {
 	// Add tool handler
 	s.AddTool(tool, toolsManager.GetReturnByConfirmationCodeToolHandler)
 
+    logger.Info("starting mcp server")
 	// // Start the stdio server
 	if err := server.ServeStdio(s); err != nil {
 		logger.Fatalf("Server error: %v\n", err)
