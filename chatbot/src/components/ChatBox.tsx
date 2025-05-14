@@ -77,7 +77,7 @@ const ChatBox = () => {
   const handleNewChat = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/chat/new', {
+      const response = await fetch('http://localhost:8002/chat/api/chat/new', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -116,7 +116,7 @@ const ChatBox = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/chat', {
+      const response = await fetch('http://localhost:8002/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
