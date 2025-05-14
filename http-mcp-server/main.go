@@ -44,7 +44,11 @@ func main() {
 	server := mcp_golang.NewServer(transport)
 	err = server.RegisterTool(toolsManager.GetReturnByConfirmationCodeTool())
 	if err != nil {
-		logger.WithError(err).Fatal("Failed to register tool")
+		logger.WithError(err).Fatal("Failed to register get confirmation code tool")
+	}
+	err = server.RegisterTool(toolsManager.RunReturnAnalyticalQueryTool())
+	if err != nil {
+		logger.WithError(err).Fatal("Failed to register run analytical tool")
 	}
 
 	err = server.Serve()
