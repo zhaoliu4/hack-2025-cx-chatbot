@@ -1,21 +1,16 @@
-from openai import OpenAI
-import os
+import openai
 
 # It's good practice to load your API key from an environment variable
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-YOUR_SITE_URL = "your_site_url.com"  # Optional, for OpenRouter leaderboards
-YOUR_SITE_NAME = "Your Chatbot Name" # Optional, for OpenRouter leaderboards
+OPENROUTER_API_KEY = "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"
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY,
-)
+# Configure OpenAI with OpenRouter
+openai.api_key = OPENROUTER_API_KEY
+openai.api_base = "https://openrouter.ai/api/v1"
 
-def get_return_status_response(customer_query):
-    """
-    Gets a response from the LLM for a customer query about return status.
-    """
-    system_message_content = (
+# Define the system prompt separately for clarity
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
         "You are a customer service expert for 'YourCompanyName'. "
         "Your sole responsibility is to provide information about the status of customer returns. "
         "You must not answer any questions or engage in conversations on any other topic. "
@@ -23,48 +18,102 @@ def get_return_status_response(customer_query):
         "politely state that you can only help with return status inquiries. "
         "Be courteous and professional in all your responses."
     )
+}
+
+def get_return_status_response_with_history(chat_history, customer_query):
+    """
+    Gets a response from the LLM for a customer query, maintaining chat history.
+
+    Args:
+        chat_history (list): A list of message dictionaries representing the conversation so far.
+                             Example: [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
+        customer_query (str): The latest query from the customer.
+
+    Returns:
+        tuple: (assistant_response_content, updated_chat_history)
+               assistant_response_content (str): The content of the assistant's response.
+               updated_chat_history (list): The chat history including the latest interaction.
+    """
+    # Make a local copy of the history to avoid modifying the original list if it's passed around
+    current_conversation = list(chat_history)
+
+    # Ensure the system prompt is the first message if history is empty or doesn't have it
+    if not current_conversation or current_conversation[0].get("role") != "system":
+        current_conversation.insert(0, SYSTEM_PROMPT)
+    # Or if it's there but different (e.g., updated system prompt), replace it
+    elif current_conversation[0].get("role") == "system" and current_conversation[0]["content"] != SYSTEM_PROMPT["content"]:
+        current_conversation[0] = SYSTEM_PROMPT
+
+
+    # Add the new user query to the conversation
+    current_conversation.append({"role": "user", "content": customer_query})
 
     try:
-        completion = client.chat.completions.create(
-            extra_headers={ # Optional headers for OpenRouter leaderboards [cite: 7]
-                "HTTP-Referer": YOUR_SITE_URL,
-                "X-Title": YOUR_SITE_NAME,
-            },
-            model="openai/gpt-4o",  # You can choose any suitable model available on OpenRouter [cite: 7, 37, 38]
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_message_content
-                },
-                {
-                    "role": "user",
-                    "content": customer_query
-                }
-            ]
+        # Specify max_tokens to limit the request size
+        completion = openai.ChatCompletion.create(
+            model="openai/gpt-3.5-turbo",  # Less expensive model
+            messages=current_conversation,
+            max_tokens=1000  # Limit response length to reduce token usage
         )
-        return completion.choices[0].message.content
+        
+        # Check if we received an error response
+        if isinstance(completion, dict) and "error" in completion:
+            raise Exception(f"API Error: {completion['error']['message']}")
+        
+        # Otherwise, extract the content based on the response structure
+        if isinstance(completion, dict) and "choices" in completion:
+            # Dict-like response
+            assistant_response_content = completion["choices"][0]["message"]["content"]
+        else:
+            # Object-like response
+            assistant_response_content = completion.choices[0].message.content
+
+        # Add the assistant's response to the conversation history
+        current_conversation.append({"role": "assistant", "content": assistant_response_content})
+
+        return assistant_response_content, current_conversation
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return "I'm sorry, but I'm unable to process your request at the moment."
+        error_message = f"An error occurred: {e}"
+        print(error_message)
+        # Add a generic error response to history to inform the user
+        current_conversation.append({"role": "assistant", "content": "I'm sorry, but I'm unable to process your request at the moment."})
+        return "I'm sorry, but I'm unable to process your request at the moment.", current_conversation
 
-# Example usage within your Python server:
+# Example usage within your Python server for a multi-turn conversation:
 if __name__ == "__main__":
-    # Simulate customer queries
-    query1 = "What is the status of my return for order #12345?"
-    response1 = get_return_status_response(query1)
+    # Initialize an empty chat history for a new conversation
+    conversation_history = []
+
+    # Turn 1
+    query1 = "Hello, I want to know about my return."
     print(f"Customer: {query1}")
-    print(f"Chatbot: {response1}")
+    assistant_reply1, conversation_history = get_return_status_response_with_history(conversation_history, query1)
+    print(f"Chatbot: {assistant_reply1}")
+    print(f"Current History: {conversation_history}\n")
 
     print("-" * 20)
 
-    query2 = "Can you tell me a joke?"
-    response2 = get_return_status_response(query2)
+    # Turn 2: Customer provides more information
+    query2 = "My order number is #RMA12345. Can you check it?"
     print(f"Customer: {query2}")
-    print(f"Chatbot: {response2}")
+    assistant_reply2, conversation_history = get_return_status_response_with_history(conversation_history, query2)
+    print(f"Chatbot: {assistant_reply2}")
+    print(f"Current History: {conversation_history}\n")
 
     print("-" * 20)
 
-    query3 = "I want to know my return status for item XYZ."
-    response3 = get_return_status_response(query3)
+    # Turn 3: Customer asks an unrelated question
+    query3 = "What's the weather like today?"
     print(f"Customer: {query3}")
-    print(f"Chatbot: {response3}")
+    assistant_reply3, conversation_history = get_return_status_response_with_history(conversation_history, query3)
+    print(f"Chatbot: {assistant_reply3}")
+    print(f"Current History: {conversation_history}\n")
+
+    print("-" * 20)
+
+    # Turn 4: Customer asks another related question
+    query4 = "Okay, for order #RMA12345, has the refund been processed?"
+    print(f"Customer: {query4}")
+    assistant_reply4, conversation_history = get_return_status_response_with_history(conversation_history, query4)
+    print(f"Chatbot: {assistant_reply4}")
+    print(f"Current History: {conversation_history}\n")
