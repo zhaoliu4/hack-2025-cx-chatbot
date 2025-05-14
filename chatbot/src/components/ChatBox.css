@@ -79,6 +79,15 @@
   color: #333;
 }
 
+.qr-code-container {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+}
+
 .input-container {
   display: flex;
   gap: 8px;

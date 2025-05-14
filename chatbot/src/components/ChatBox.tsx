@@ -111,7 +111,8 @@ const ChatBox = () => {
       const botResponse: Message = {
         text: data.response || "Sorry, I'm having trouble responding right now.",
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
+        qrCode: data.qrCode || undefined  // Add QR code if present in response
       };
       setMessages(prevMessages => [...prevMessages, botResponse]);
     } catch (error) {

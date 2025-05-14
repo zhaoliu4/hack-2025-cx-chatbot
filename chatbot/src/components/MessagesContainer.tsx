@@ -1,10 +1,12 @@
 import React from 'react';
 import type { RefObject } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface Message {
   text: string;
   isUser: boolean;
   timestamp: Date;
+  qrCode?: string;
 }
 
 interface MessagesContainerProps {
@@ -34,6 +36,11 @@ const MessagesContainer: React.FC<MessagesContainerProps> = ({
           )}
           <div className={`message-bubble ${message.isUser ? 'user' : 'bot'}`}>
             {message.text}
+            {message.qrCode && (
+              <div className="qr-code-container">
+                <QRCodeSVG value={message.qrCode} size={200} />
+              </div>
+            )}
           </div>
         </div>
       ))}
