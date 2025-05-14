@@ -20,6 +20,16 @@ const MessagesContainer: React.FC<MessagesContainerProps> = ({
   isLoading,
   messagesEndRef
 }) => {
+  // Function to format text with line breaks
+  const formatText = (text: string) => {
+    return text.split('\n').map((line, i) => (
+      <React.Fragment key={i}>
+        {line}
+        {i < text.split('\n').length - 1 && <br />}
+      </React.Fragment>
+    ));
+  };
+
   return (
     <div className="messages-container">
       {messages.map((message, index) => (
@@ -35,7 +45,9 @@ const MessagesContainer: React.FC<MessagesContainerProps> = ({
             />
           )}
           <div className={`message-bubble ${message.isUser ? 'user' : 'bot'}`}>
-            {message.text}
+            <div className="message-text">
+              {formatText(message.text)}
+            </div>
             {message.qrCode && (
               <div className="qr-code-container">
                 <QRCodeSVG value={message.qrCode} size={200} />

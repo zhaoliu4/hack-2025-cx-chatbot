@@ -69,6 +69,12 @@
   text-align: left;
 }
 
+.message-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
 .message-bubble.user {
   background-color: #F0F0F0;
   color: #333;
