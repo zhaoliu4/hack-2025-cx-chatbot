@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import httpx
 from typing import List, Optional
 import logging
-from mcp_http_client import MCPHTTPClient
+# No longer need MCPHTTPClient as we use direct JSON-RPC calls
 from llm.llm_service import get_return_status_response_with_tools
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
@@ -50,9 +50,6 @@ class LLMResponse(BaseModel):
     text: str
     tool_calls: Optional[List[dict]] = None
 
-
-# Global variables
-mcp_client = None
 
 # HTTP MCP server settings
 HTTP_MCP_SERVER_URL = os.environ.get("HTTP_MCP_SERVER_URL", "http://localhost:53000/mcp")
@@ -128,29 +125,17 @@ async def list_tools():
         return {"error": str(e)}
 
 
-# Use FastAPI's startup and shutdown events instead of lifespan
+# Use FastAPI's startup event to test tool availability
 @app.on_event("startup")
 async def startup_event():
-    global mcp_client
-    # Startup: Initialize HTTP MCP client
+    # Startup: Test MCP server connectivity and list tools
     try:
-        logger.info("initializing mcp client")
+        logger.info(f"Testing connection to MCP server at {HTTP_MCP_SERVER_URL}")
         tools = await list_tools()
         logger.info(f"MCP tools list: {tools}")
-        logger.info(f"HTTP MCP client initialized successfully, connected to {HTTP_MCP_SERVER_URL}")
+        logger.info(f"Connection to HTTP MCP server successful")
     except Exception as e:
-        logger.error(f"Failed to initialize HTTP MCP client: {str(e)}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    global mcp_client
-    # Shutdown: Close the MCP client when the app is shutting down
-    if mcp_client:
-        try:
-            await mcp_client.close()
-            logger.info("HTTP MCP client closed")
-        except Exception as e:
-            logger.error(f"Error closing HTTP MCP client: {str(e)}")
+        logger.error(f"Failed to connect to MCP server: {str(e)}")
 
 
 @app.post("/chat")
@@ -169,9 +154,8 @@ async def chat(request: Request):
 
         # Process with tools
         response_text, updated_history = await get_return_status_response_with_tools(
-            chat_history,
-            user_message,
-            mcp_client
+            chat_history, 
+            user_message
         )
 
         return {

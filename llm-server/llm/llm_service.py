@@ -4,9 +4,7 @@ import os
 import json
 import asyncio
 
-KEY_CHASE = "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"
-KEY_MINH = "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"
-OPENROUTER_API_KEY = KEY_CHASE
+OPENROUTER_API_KEY = "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"
 
 # Configure OpenAI with OpenRouter
 openai.api_key = OPENROUTER_API_KEY
@@ -91,7 +89,44 @@ async def list_tools():
         print(f"Error making JSON-RPC request to MCP server: {str(e)}")
         return {"error": str(e)}
 
-
+async def call_tool_jsonrpc(function_name, function_args):
+    """
+    Execute a tool via direct JSON-RPC to the MCP server.
+    
+    Args:
+        function_name (str): The name of the tool to call
+        function_args (dict): The arguments to pass to the tool
+        
+    Returns:
+        The tool execution result
+    """
+    url = HTTP_MCP_SERVER_URL
+    
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 5,  # Using a static ID as per example
+        "method": "tools/call",
+        "params": {
+            "name": function_name,
+            "arguments": function_args
+        }
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            print(f"Making JSON-RPC request to execute tool: {function_name}")
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            
+            json_response = response.json()
+            # Tool results are in the "result" field of the JSON-RPC response
+            if "result" in json_response:
+                return json_response["result"]
+            else:
+                return json_response
+    except Exception as e:
+        print(f"Error executing tool via JSON-RPC: {str(e)}")
+        return {"error": str(e)}
 
 def get_return_status_response_with_history(chat_history, customer_query):
     """
@@ -152,14 +187,13 @@ def get_return_status_response_with_history(chat_history, customer_query):
         current_conversation.append({"role": "assistant", "content": "I'm sorry, but I'm unable to process your request at the moment."})
         return "I'm sorry, but I'm unable to process your request at the moment.", current_conversation
 
-async def get_return_status_response_with_tools(chat_history, customer_query, mcp_client):
+async def get_return_status_response_with_tools(chat_history, customer_query):
     """
-    Gets a response from the LLM for a customer query, with tool calling capability via MCP.
+    Gets a response from the LLM for a customer query, with tool calling capability via direct JSON-RPC.
 
     Args:
         chat_history (list): A list of message dictionaries representing the conversation so far.
         customer_query (str): The latest query from the customer.
-        mcp_client: The initialized MCP client session
 
     Returns:
         tuple: (assistant_response_content, updated_chat_history)
@@ -212,8 +246,8 @@ async def get_return_status_response_with_tools(chat_history, customer_query, mc
                 
                 print(f"Executing tool: {function_name} with args: {function_args}")
                 
-                # Execute the tool via MCP
-                tool_result = await mcp_client.call_tool(function_name, arguments=function_args)
+                # Execute the tool via direct JSON-RPC
+                tool_result = await call_tool_jsonrpc(function_name, function_args)
                 
                 # Add the tool result to the conversation
                 current_conversation.append({
