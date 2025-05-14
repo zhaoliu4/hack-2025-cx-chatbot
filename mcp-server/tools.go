@@ -237,6 +237,60 @@ func (tm *toolsManager) GetReturnByConfirmationCodeToolHandler(ctx context.Conte
 	return mcp.NewToolResultText(content), nil
 }
 
+func (tm *toolsManager) RunReturnAnalyticalQueryToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query, ok := request.Params.Arguments["query"].(string)
+	if !ok {
+		return nil, errors.New("query must be a string")
+	}
+
+	rows, err := tm.db.Debug().Raw(query).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, err
+		}
+
+		rowMap := make(map[string]interface{})
+		for i, col := range columns {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				rowMap[col] = string(b)
+			} else {
+				rowMap[col] = val
+			}
+		}
+
+		results = append(results, rowMap)
+	}
+
+	tm.logger.Info("Analytical query result: ", results)
+
+	jsonResult, err := json.Marshal(results)
+	if err != nil {
+		tm.logger.WithError(err).Error("Failed to marshal query result to JSON")
+		return nil, err
+	}
+	content := fmt.Sprintf("The result of the query is: %s", string(jsonResult))
+	return mcp.NewToolResultText(content), nil
+}
+
 func (tm *toolsManager) GetReturnByConfirmation(confirmationCode string, paths []string) (*dcModels.Return, error) {
 	resp, err := tm.returnsDCClient.GetReturnByConfirmationCode(context.Background(),
 		&returnDataCastle.ReturnConfirmationCodeRequest{

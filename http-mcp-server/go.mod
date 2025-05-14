@@ -5,7 +5,6 @@ go 1.24.1
 require (
 	github.com/happyreturns/data-castle/modules/returns-service v0.20.1
 	github.com/happyreturns/gohelpers v1.46.1
-	github.com/joho/godotenv v1.5.1
 	github.com/jinzhu/gorm v1.9.16
 	github.com/metoro-io/mcp-golang v0.12.0
 	google.golang.org/protobuf v1.35.1
