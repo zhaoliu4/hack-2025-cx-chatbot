@@ -173,23 +173,13 @@
 }
 
 .footer {
-  margin-top: 16px;
+  margin-top: 8px;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 32px;
   position: relative;
   text-align: center;
-}
-
-.footer:before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -16px;
-  right: -16px;
-  height: 1px;
-  background-color: #eee;
 }
 
 .new-chat-button {
