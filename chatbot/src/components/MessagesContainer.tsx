@@ -20,7 +20,7 @@ interface MessagesContainerProps {
 
 const ErrorMessage: React.FC = () => (
   <div className="error-message">
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
       <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="2"/>
       <path d="M10 5v6m0 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
     </svg>
@@ -44,16 +44,21 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
       aria-label="Copy QR code"
     >
       {copied ? (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M13 4L6 11L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M13 4L6 11L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span>Copied!</span>
+        </>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2"/>
-          <path d="M13 6V13C13 13.5523 12.5523 14 12 14H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
+        <>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2"/>
+            <path d="M13 6V13C13 13.5523 12.5523 14 12 14H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          <span>Copy</span>
+        </>
       )}
-      <span className="copy-tooltip">{copied ? 'Copied!' : 'Copy QR code'}</span>
     </button>
   );
 };
@@ -89,8 +94,8 @@ const MessagesContainer: React.FC<MessagesContainerProps> = ({
             </div>
             {message.qrCode && (
               <div className="qr-code-container">
-                <QRCodeSVG value={message.qrCode} size={200} />
                 <CopyButton text={message.qrCode} />
+                <QRCodeSVG value={message.qrCode} size={200} />
               </div>
             )}
           </div>

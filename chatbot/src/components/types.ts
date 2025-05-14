@@ -3,4 +3,5 @@ export interface Message {
   isUser: boolean;
   timestamp: Date;
   qrCode?: string;  // Optional QR code data string
+  error?: boolean;
 } 
