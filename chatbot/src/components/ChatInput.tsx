@@ -1,10 +1,13 @@
-import React, { KeyboardEvent } from 'react';
+import React from 'react';
+import type { KeyboardEvent } from 'react';
 
 interface ChatInputProps {
   inputMessage: string;
   onInputChange: (value: string) => void;
   onSendMessage: () => void;
 }
+
+const MAX_CHARS = 500;
 
 const ChatInput: React.FC<ChatInputProps> = ({
   inputMessage,
@@ -23,13 +26,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
       <input
         type="text"
         value={inputMessage}
-        onChange={(e) => onInputChange(e.target.value)}
+        onChange={(e) => onInputChange(e.target.value.slice(0, MAX_CHARS))}
         onKeyDown={handleKeyDown}
         placeholder="Type your message..."
         className="chat-input"
         aria-label="Message input"
         role="textbox"
         aria-multiline="false"
+        maxLength={MAX_CHARS}
       />
       <button 
         onClick={onSendMessage} 
