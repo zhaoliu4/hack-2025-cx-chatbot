@@ -7,6 +7,7 @@ from typing import List, Optional
 import logging
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -208,6 +209,35 @@ async def create_new_chat():
         logger.error(f"Error creating new chat: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def extract_confirmation_code(text: str) -> Optional[str]:
+    """Extract confirmation code from text using regex patterns."""
+    # Pattern for Happy Returns confirmation code format: HR followed by 6 alphanumeric characters
+    patterns = [
+        r'confirmation(?:\s+)?(?:code|number)?[:\s]+(HR[A-Z0-9]{6})',  # HR123456
+        r'reference(?:\s+)?(?:code|number)?[:\s]+(HR[A-Z0-9]{6})',     # HR123456
+        r'tracking(?:\s+)?(?:code|number)?[:\s]+(HR[A-Z0-9]{6})',      # HR123456
+        r'return(?:\s+)?(?:code|number)?[:\s]+(HR[A-Z0-9]{6})',        # HR123456
+        r'\b(HR[A-Z0-9]{6})\b'                                         # Generic HR code pattern
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()  # Ensure the code is uppercase
+    return None
+
+def should_generate_qr(text: str) -> bool:
+    """Check if the response indicates a QR code should be generated."""
+    qr_indicators = [
+        'scan this qr',
+        'scan the qr',
+        'qr code',
+        'show qr',
+        'generate qr',
+        'display qr'
+    ]
+    return any(indicator in text.lower() for indicator in qr_indicators)
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def handle_chat_message(message: ChatMessage):
     """Handle incoming chat messages"""
@@ -224,15 +254,18 @@ async def handle_chat_message(message: ChatMessage):
                 OPENROUTER_URL,
                 headers={
                     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "HTTP-Referer": "https://happyreturns.com",  # Update with your domain
-                    "X-Title": "Happy Returns Support"  # Update with your chatbot name
+                    "HTTP-Referer": "https://happyreturns.com",
+                    "X-Title": "Happy Returns Support"
                 },
                 json={
                     "model": llm_request.model,
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are a helpful Happy Returns customer support agent. Provide clear, concise answers and use markdown formatting when appropriate to make your responses more readable. Always maintain a professional and friendly tone."
+                            "content": """You are a helpful Happy Returns customer support agent. 
+                            Provide clear, concise answers and use markdown formatting when appropriate.
+                            When providing confirmation codes or reference numbers, clearly label them and suggest scanning the QR code when available.
+                            Always maintain a professional and friendly tone."""
                         },
                         *[{"role": "user" if h["user_message"] else "assistant", 
                            "content": h["user_message"] or h["bot_response"]} 
@@ -251,10 +284,11 @@ async def handle_chat_message(message: ChatMessage):
         result = response.json()
         llm_response = result["choices"][0]["message"]["content"]
 
-        # Check if response contains a QR code request (you can implement custom logic here)
+        # Check for confirmation code and QR code request
         qr_code = None
-        # if "generate_qr_code" in llm_response.lower():
-        #     qr_code = generate_qr_code(...)
+        confirmation_code = extract_confirmation_code(llm_response)
+        if confirmation_code and should_generate_qr(llm_response):
+            qr_code = confirmation_code
 
         return ChatResponse(
             response=llm_response,
