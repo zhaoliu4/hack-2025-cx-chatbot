@@ -368,10 +368,14 @@ func (tm *toolsManager) GetOutboundShipmentsByInstanceIDs(instanceIDs []string) 
 
 func sanitizeReturn(retrn *dcModels.Return) *dcModels.Return {
 	retrn.Itemization = ""
-	retrn.CustomerIdentity.RecaptchaValue = ""
-	retrn.CustomerIdentity.Token = ""
+	if retrn.CustomerIdentity != nil {
+		retrn.CustomerIdentity.RecaptchaValue = ""
+		retrn.CustomerIdentity.Token = ""
+	}
 	for _, instance := range retrn.GetInstances() {
-		instance.Purchase.Details = ""
+		if instance.Purchase != nil {
+			instance.Purchase.Details = ""
+		}
 	}
 	return retrn
 }
