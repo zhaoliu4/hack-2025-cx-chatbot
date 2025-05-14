@@ -1,12 +1,13 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import os
 import httpx
 from typing import List, Optional
 import logging
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
+from llm.llm_service import get_return_status_response_with_tools
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,8 +40,9 @@ class LLMResponse(BaseModel):
     tool_calls: Optional[List[dict]] = None
 
 
-# Global MCP client
+# Global variables
 mcp_client = None
+stdio_context = None
 
 # OpenRouter client setup
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
@@ -55,21 +57,44 @@ async def handle_sampling_message(message: types.SamplingMessage):
     logger.info(f"Sampling: {message.text}")
 
 
-# Startup event to initialize MCP client
+# Global variables to properly manage MCP resources
+mcp_client = None
+stdio_context = None  # To hold the context manager reference
+
+# Use FastAPI's startup and shutdown events instead of lifespan
 @app.on_event("startup")
 async def startup_event():
-    global mcp_client
+    global mcp_client, stdio_context
+    # Startup: Initialize MCP client
     try:
-        # Create server parameters for stdio connection
+        # Create server parameters for stdio connection to use the executable
         server_params = StdioServerParameters(
-            command="go",
-            args=["run", f"{mcp_server_path}/main.go"],
-            env={
-                "DATABASE_CONNECTION_STRING": ""}
+            command=f"{mcp_server_path}/mcp-server",
+            args=[],
+            env={}
         )
 
-        # Initialize the MCP client
-        read, write = await stdio_client(server_params)
+        # Initialize the stdio client
+        stdio_context = stdio_client(server_params)
+        
+        # Use the stdio_context properly with async with
+        read, write = None, None
+        context_manager = stdio_client(server_params)
+        
+        # This part needs special handling because we need to keep the context open
+        # We can't use an async with block directly since it would close the connection
+        # when the block exits
+        
+        # Get the async iterator
+        stdio_aiter = context_manager.__aenter__()
+        # Get the read/write handles
+        r, w = await stdio_aiter
+        read, write = r, w
+        
+        # Store the context manager for cleanup
+        stdio_context = context_manager
+        
+        # Create the MCP client session with the obtained handles
         mcp_client = ClientSession(
             read, write, sampling_callback=handle_sampling_message
         )
@@ -80,14 +105,24 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize MCP client: {str(e)}")
 
-
-# Shutdown event to close the MCP client
 @app.on_event("shutdown")
 async def shutdown_event():
-    global mcp_client
+    global mcp_client, stdio_context
+    # Shutdown: Close the MCP client when the app is shutting down
     if mcp_client:
-        await mcp_client.close()
-        logger.info("MCP client closed")
+        try:
+            await mcp_client.close()
+            logger.info("MCP client closed")
+        except Exception as e:
+            logger.error(f"Error closing MCP client: {str(e)}")
+    
+    # Close the stdio context if it exists
+    if stdio_context:
+        try:
+            await stdio_context.__aexit__(None, None, None)
+            logger.info("Stdio context closed")
+        except Exception as e:
+            logger.error(f"Error closing stdio context: {str(e)}")
 
 
 @app.post("/generate", response_model=LLMResponse)
@@ -175,6 +210,38 @@ async def execute_tool(tool_call_data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/chat")
+async def chat(request: Request):
+    """Chat endpoint that supports tool usage via MCP"""
+    if not mcp_client:
+        raise HTTPException(status_code=500, detail="MCP client not initialized")
+        
+    try:
+        data = await request.json()
+        
+        if not data.get("message"):
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        # Extract chat history if provided, or start with empty history
+        chat_history = data.get("chat_history", [])
+        user_message = data.get("message")
+        
+        # Process with tools
+        response_text, updated_history = await get_return_status_response_with_tools(
+            chat_history, 
+            user_message,
+            mcp_client
+        )
+        
+        return {
+            "response": response_text,
+            "chat_history": updated_history
+        }
+    except Exception as e:
+        logger.error(f"Error in chat processing: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/available_tools")
 async def get_available_tools():
     """Get available tools from MCP server"""
@@ -187,6 +254,9 @@ async def get_available_tools():
     except Exception as e:
         logger.error(f"Error fetching tools: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Removed duplicate /chat endpoint here
 
 
 if __name__ == "__main__":
