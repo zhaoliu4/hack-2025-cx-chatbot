@@ -42,10 +42,6 @@ class LLMResponse(BaseModel):
 # Global variables
 mcp_client = None
 
-# OpenRouter client setup
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
 # HTTP MCP server settings
 HTTP_MCP_SERVER_URL = os.environ.get("HTTP_MCP_SERVER_URL", "http://localhost:53000/mcp")
 
@@ -120,7 +116,6 @@ async def list_tools():
         return {"error": str(e)}
 
 
-
 # Use FastAPI's startup and shutdown events instead of lifespan
 @app.on_event("startup")
 async def startup_event():
@@ -144,76 +139,6 @@ async def shutdown_event():
             logger.info("HTTP MCP client closed")
         except Exception as e:
             logger.error(f"Error closing HTTP MCP client: {str(e)}")
-
-
-@app.post("/generate", response_model=LLMResponse)
-async def generate_text(request: LLMRequest):
-    """Generate text from an LLM using OpenRouter with context from MCP"""
-    if not OPENROUTER_API_KEY:
-        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
-
-    try:
-        # Get relevant tools from MCP server
-        tools = await list_tools()
-
-
-        # Create request payload for OpenRouter
-        payload = {
-            "model": request.model,
-            "messages": [{"role": "user", "content": request.prompt}],
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-        }
-
-        # Add tools if provided in the request or from MCP
-        if request.tools:
-            payload["tools"] = request.tools
-        elif tools:
-            payload["tools"] = tools
-
-        print(f'OPEN ROUTER URL: {OPENROUTER_URL}')
-        print(f'OPENROUTER_API_KEY: {OPENROUTER_API_KEY}')        # Send request to OpenRouter
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                OPENROUTER_URL,
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                json=payload,
-                timeout=60.0,
-            )
-
-        if response.status_code != 200:
-            logger.error(f"OpenRouter API error: {response.text}")
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-
-        result = response.json()
-
-        # Extract text and tool calls
-        text = result["choices"][0]["message"]["content"]
-        tool_calls = result["choices"][0]["message"].get("tool_calls", [])
-
-        return LLMResponse(text=text, tool_calls=tool_calls)
-
-    except Exception as e:
-        logger.error(f"Error generating with context: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/execute_tool")
-async def execute_tool(tool_call_data: dict):
-    """Execute an MCP tool based on the tool call from the LLM"""
-    if not mcp_client:
-        raise HTTPException(status_code=500, detail="MCP client not initialized")
-
-    try:
-        tool_name = tool_call_data["name"]
-        arguments = tool_call_data["arguments"]
-
-        # Execute tool via MCP client
-        result = await mcp_client.call_tool(tool_name, arguments=arguments)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"Tool execution error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/chat")
@@ -244,23 +169,6 @@ async def chat(request: Request):
     except Exception as e:
         logger.error(f"Error in chat processing: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/available_tools")
-async def get_available_tools():
-    """Get available tools from MCP server"""
-    if not mcp_client:
-        raise HTTPException(status_code=500, detail="MCP client not initialized")
-
-    try:
-        tools = await mcp_client.list_tools()
-        return {"tools": tools}
-    except Exception as e:
-        logger.error(f"Error fetching tools: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Removed duplicate /chat endpoint here
 
 
 if __name__ == "__main__":
