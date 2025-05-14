@@ -24,8 +24,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Models for chat endpoints
+class ChatMessage(BaseModel):
+    chat_id: Optional[str]
+    current_message: str
+    chat_history: List[dict]
 
-# Models for request/response
+class ChatResponse(BaseModel):
+    response: str
+    chat_id: Optional[str]
+    qrCode: Optional[str]
+
+# Models for LLM communication
 class LLMRequest(BaseModel):
     prompt: str
     model: str = "anthropic/claude-3-sonnet-20240229"
@@ -33,11 +43,9 @@ class LLMRequest(BaseModel):
     temperature: float = 0.7
     tools: Optional[List[dict]] = None
 
-
 class LLMResponse(BaseModel):
     text: str
     tool_calls: Optional[List[dict]] = None
-
 
 # Global MCP client
 mcp_client = None
@@ -188,6 +196,83 @@ async def get_available_tools():
         logger.error(f"Error fetching tools: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/api/chat/new")
+async def create_new_chat():
+    """Create a new chat session"""
+    try:
+        # Generate a new chat ID (you might want to use a more sophisticated method)
+        chat_id = f"chat_{os.urandom(8).hex()}"
+        return {"chat_id": chat_id}
+    except Exception as e:
+        logger.error(f"Error creating new chat: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def handle_chat_message(message: ChatMessage):
+    """Handle incoming chat messages"""
+    try:
+        # Format the prompt with chat history
+        formatted_prompt = format_prompt_with_history(message.current_message, message.chat_history)
+        
+        # Create LLM request
+        llm_request = LLMRequest(prompt=formatted_prompt)
+        
+        # Get response from OpenRouter
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "HTTP-Referer": "https://happyreturns.com",  # Update with your domain
+                    "X-Title": "Happy Returns Support"  # Update with your chatbot name
+                },
+                json={
+                    "model": llm_request.model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a helpful Happy Returns customer support agent. Provide clear, concise answers and use markdown formatting when appropriate to make your responses more readable. Always maintain a professional and friendly tone."
+                        },
+                        *[{"role": "user" if h["user_message"] else "assistant", 
+                           "content": h["user_message"] or h["bot_response"]} 
+                          for h in message.chat_history],
+                        {"role": "user", "content": message.current_message}
+                    ],
+                    "max_tokens": llm_request.max_tokens,
+                    "temperature": llm_request.temperature
+                }
+            )
+
+        if response.status_code != 200:
+            logger.error(f"OpenRouter API error: {response.text}")
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        result = response.json()
+        llm_response = result["choices"][0]["message"]["content"]
+
+        # Check if response contains a QR code request (you can implement custom logic here)
+        qr_code = None
+        # if "generate_qr_code" in llm_response.lower():
+        #     qr_code = generate_qr_code(...)
+
+        return ChatResponse(
+            response=llm_response,
+            chat_id=message.chat_id,
+            qrCode=qr_code
+        )
+
+    except Exception as e:
+        logger.error(f"Error handling chat message: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def format_prompt_with_history(current_message: str, chat_history: List[dict]) -> str:
+    """Format the prompt with chat history for better context"""
+    formatted_history = "\n".join([
+        f"User: {h['user_message']}\nAssistant: {h['bot_response']}"
+        for h in chat_history
+    ])
+    return f"{formatted_history}\nUser: {current_message}"
 
 if __name__ == "__main__":
     import uvicorn
