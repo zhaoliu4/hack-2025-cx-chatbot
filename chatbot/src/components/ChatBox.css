@@ -1,19 +1,23 @@
 .chat-box {
   width: 100%;
-  max-width: 600px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 16px 16px 0;
-  margin: 20px auto;
+  height: 100vh;
+  max-width: 50%;
+  margin: 0 auto 24px auto;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   background-color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
-  padding-bottom: 20px;
+  padding: 16px 24px;
   border-bottom: 1px solid #eee;
 }
 
@@ -36,10 +40,12 @@
 }
 
 .messages-container {
-  height: 400px;
+  flex: 1;
+  height: auto;
   overflow-y: auto;
-  margin-bottom: 16px;
-  padding: 8px;
+  padding: 24px;
+  margin: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .message-row {
@@ -134,8 +140,12 @@
 }
 
 .input-container {
+  flex-shrink: 0;
   display: flex;
   gap: 8px;
+  padding: 16px 24px;
+  background-color: #FFFFFF;
+  border-top: 1px solid #eee;
 }
 
 .chat-input {
@@ -175,13 +185,16 @@
 }
 
 .footer {
-  margin-top: 8px;
+  flex-shrink: 0;
+  margin: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 32px;
   position: relative;
   text-align: center;
+  padding: 8px 0;
+  background-color: #FFFFFF;
 }
 
 .new-chat-button {
@@ -214,10 +227,11 @@
 .powered-by {
   text-align: center;
   width: 100%;
+  padding: 12px 0;
 }
 
 .powered-by img {
-  height: 20px;
+  height: 24px;
   vertical-align: middle;
   margin: 8px auto;
   display: block;
