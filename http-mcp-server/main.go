@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	os.Setenv("DATABASE_CONNECTION_STRING", "postgres://username:password@db-dev.happyreturns.com/happyreturns")
+	os.Setenv("DATABASE_CONNECTION_STRING", "postgres://chase_burgess_user:a%26mMJm9bkN%24MnnGRIY%23besIB@db-dev.happyreturns.com/happyreturns")
 
 	app := "mcp-server"
 
