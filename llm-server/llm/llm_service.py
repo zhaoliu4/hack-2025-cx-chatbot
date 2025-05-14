@@ -5,7 +5,9 @@ import json
 import asyncio
 
 # It's good practice to load your API key from an environment variable
-OPENROUTER_API_KEY = "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"
+CHASE_KEY = "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"
+MINH_KEY = "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"
+OPENROUTER_API_KEY = ""
 
 # Configure OpenAI with OpenRouter
 openai.api_key = OPENROUTER_API_KEY
