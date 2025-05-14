@@ -237,6 +237,29 @@ func (tm *toolsManager) GetReturnByConfirmationCodeToolHandler(ctx context.Conte
 	return mcp.NewToolResultText(content), nil
 }
 
+func (tm *toolsManager) RunReturnAnalyticalQueryToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query, ok := request.Params.Arguments["query"].(string)
+	if !ok {
+		return nil, errors.New("query must be a string")
+	}
+
+	var result interface{}
+	err := tm.db.Debug().Raw(query).Scan(&result).Error
+	if err != nil {
+		tm.logger.WithError(err).Error("Failed to run analytical query")
+		return nil, err
+	}
+	tm.logger.Info("Analytical query result: ", result)
+
+	jsonResult, err := json.Marshal(result)
+	if err != nil {
+		tm.logger.WithError(err).Error("Failed to marshal query result to JSON")
+		return nil, err
+	}
+	content := fmt.Sprintf("The result of the query is: %s", string(jsonResult))
+	return mcp.NewToolResultText(content), nil
+}
+
 func (tm *toolsManager) GetReturnByConfirmation(confirmationCode string, paths []string) (*dcModels.Return, error) {
 	resp, err := tm.returnsDCClient.GetReturnByConfirmationCode(context.Background(),
 		&returnDataCastle.ReturnConfirmationCodeRequest{
