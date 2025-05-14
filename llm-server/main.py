@@ -5,8 +5,7 @@ from pydantic import BaseModel
 import httpx
 from typing import List, Optional
 import logging
-from mcp import ClientSession, StdioServerParameters, types
-from mcp.client.stdio import stdio_client
+from mcp_http_client import MCPHTTPClient
 from llm.llm_service import get_return_status_response_with_tools
 
 # Configure logging
@@ -42,87 +41,52 @@ class LLMResponse(BaseModel):
 
 # Global variables
 mcp_client = None
-stdio_context = None
 
 # OpenRouter client setup
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-mcp_server_path = "../mcp-server"  # Adjust to your actual path
+# HTTP MCP server settings
+HTTP_MCP_SERVER_URL = os.environ.get("HTTP_MCP_SERVER_URL", "http://localhost:53000/mcp")
 
 
 # Sampling message handler
-async def handle_sampling_message(message: types.SamplingMessage):
+async def handle_sampling_message(message):
     """Handle sampling messages from the MCP server"""
-    logger.info(f"Sampling: {message.text}")
+    logger.info(f"Sampling: {message.get('text', '')}")
 
 
 # Global variables to properly manage MCP resources
 mcp_client = None
-stdio_context = None  # To hold the context manager reference
 
 # Use FastAPI's startup and shutdown events instead of lifespan
 @app.on_event("startup")
 async def startup_event():
-    global mcp_client, stdio_context
-    # Startup: Initialize MCP client
+    global mcp_client
+    # Startup: Initialize HTTP MCP client
     try:
-        # Create server parameters for stdio connection to use the executable
-        server_params = StdioServerParameters(
-            command=f"{mcp_server_path}/mcp-server",
-            args=[],
-            env={}
-        )
-
-        # Initialize the stdio client
-        stdio_context = stdio_client(server_params)
-        
-        # Use the stdio_context properly with async with
-        read, write = None, None
-        context_manager = stdio_client(server_params)
-        
-        # This part needs special handling because we need to keep the context open
-        # We can't use an async with block directly since it would close the connection
-        # when the block exits
-        
-        # Get the async iterator
-        stdio_aiter = context_manager.__aenter__()
-        # Get the read/write handles
-        r, w = await stdio_aiter
-        read, write = r, w
-        
-        # Store the context manager for cleanup
-        stdio_context = context_manager
-        
-        # Create the MCP client session with the obtained handles
-        mcp_client = ClientSession(
-            read, write, sampling_callback=handle_sampling_message
+        # Create HTTP MCP client
+        mcp_client = MCPHTTPClient(
+            base_url=HTTP_MCP_SERVER_URL,
+            sampling_callback=handle_sampling_message
         )
 
         # Initialize the connection
         await mcp_client.initialize()
-        logger.info("MCP client initialized successfully")
+        logger.info(f"HTTP MCP client initialized successfully, connected to {HTTP_MCP_SERVER_URL}")
     except Exception as e:
-        logger.error(f"Failed to initialize MCP client: {str(e)}")
+        logger.error(f"Failed to initialize HTTP MCP client: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global mcp_client, stdio_context
+    global mcp_client
     # Shutdown: Close the MCP client when the app is shutting down
     if mcp_client:
         try:
             await mcp_client.close()
-            logger.info("MCP client closed")
+            logger.info("HTTP MCP client closed")
         except Exception as e:
-            logger.error(f"Error closing MCP client: {str(e)}")
-    
-    # Close the stdio context if it exists
-    if stdio_context:
-        try:
-            await stdio_context.__aexit__(None, None, None)
-            logger.info("Stdio context closed")
-        except Exception as e:
-            logger.error(f"Error closing stdio context: {str(e)}")
+            logger.error(f"Error closing HTTP MCP client: {str(e)}")
 
 
 @app.post("/generate", response_model=LLMResponse)
@@ -260,6 +224,7 @@ async def get_available_tools():
 
 
 if __name__ == "__main__":
+    # Explicit import here to avoid linting errors
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=True)
