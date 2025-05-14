@@ -5,6 +5,14 @@ import ChatInput from './ChatInput';
 import MessagesContainer from './MessagesContainer';
 import type { Message } from './types';
 
+const STORAGE_KEY = 'happy-returns-chat';
+
+interface StoredChat {
+  chatId: string | null;
+  messages: Message[];
+  lastUpdated: number;
+}
+
 const ChatBox = () => {
   const initialMessage: Message = {
     text: "Hi, I'm the Happy Returns Support Agent, how can I help you today?",
@@ -12,11 +20,45 @@ const ChatBox = () => {
     timestamp: new Date()
   };
 
-  const [messages, setMessages] = useState<Message[]>([initialMessage]);
+  // Load chat history from localStorage
+  const loadChatHistory = (): StoredChat | null => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Convert stored timestamps back to Date objects
+      parsed.messages = parsed.messages.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp)
+      }));
+      return parsed;
+    }
+    return null;
+  };
+
+  // Save chat history to localStorage
+  const saveChatHistory = (chatId: string | null, messages: Message[]) => {
+    const chatData: StoredChat = {
+      chatId,
+      messages,
+      lastUpdated: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(chatData));
+  };
+
+  // Initialize state from localStorage or with default values
+  const storedChat = loadChatHistory();
+  const [messages, setMessages] = useState<Message[]>(
+    storedChat?.messages || [initialMessage]
+  );
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [chatId, setChatId] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(storedChat?.chatId || null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Save to localStorage whenever messages or chatId changes
+  useEffect(() => {
+    saveChatHistory(chatId, messages);
+  }, [messages, chatId]);
 
   const generateChatId = () => {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -80,7 +122,7 @@ const ChatBox = () => {
       timestamp: new Date()
     };
 
-    setMessages([...messages, newMessage]);
+    setMessages(prevMessages => [...prevMessages, newMessage]);
     setInputMessage('');
     setIsLoading(true);
 
@@ -112,7 +154,7 @@ const ChatBox = () => {
         text: data.response || "Sorry, I'm having trouble responding right now.",
         isUser: false,
         timestamp: new Date(),
-        qrCode: data.qrCode || undefined  // Add QR code if present in response
+        qrCode: data.qrCode || undefined
       };
       setMessages(prevMessages => [...prevMessages, botResponse]);
     } catch (error) {
@@ -120,21 +162,13 @@ const ChatBox = () => {
       const errorResponse: Message = {
         text: "Sorry, I'm having trouble responding right now.",
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
+        error: true
       };
       setMessages(prevMessages => [...prevMessages, errorResponse]);
     } finally {
       setIsLoading(false);
     }
-    
-
-    // Log the structure that will be sent to API
-    const chatHistory = formatChatHistory();
-    console.log('Future API payload:', {
-      chat_id: chatId,
-      current_message: inputMessage,
-      chat_history: chatHistory
-    });
   };
 
   useEffect(() => {
