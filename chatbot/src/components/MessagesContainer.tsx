@@ -1,12 +1,15 @@
 import React from 'react';
 import type { RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import ReactMarkdown from 'react-markdown';
+import copy from 'copy-to-clipboard';
 
 interface Message {
   text: string;
   isUser: boolean;
   timestamp: Date;
   qrCode?: string;
+  error?: boolean;
 }
 
 interface MessagesContainerProps {
@@ -15,27 +18,57 @@ interface MessagesContainerProps {
   messagesEndRef: RefObject<HTMLDivElement | null>;
 }
 
+const ErrorMessage: React.FC = () => (
+  <div className="error-message">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="2"/>
+      <path d="M10 5v6m0 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+    <span>Something went wrong. Please try again.</span>
+  </div>
+);
+
+const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    copy(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button 
+      onClick={handleCopy}
+      className="copy-button"
+      aria-label="Copy QR code"
+    >
+      {copied ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M13 4L6 11L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2"/>
+          <path d="M13 6V13C13 13.5523 12.5523 14 12 14H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      )}
+      <span className="copy-tooltip">{copied ? 'Copied!' : 'Copy QR code'}</span>
+    </button>
+  );
+};
+
 const MessagesContainer: React.FC<MessagesContainerProps> = ({
   messages,
   isLoading,
   messagesEndRef
 }) => {
-  // Function to format text with line breaks
-  const formatText = (text: string) => {
-    return text.split('\n').map((line, i) => (
-      <React.Fragment key={i}>
-        {line}
-        {i < text.split('\n').length - 1 && <br />}
-      </React.Fragment>
-    ));
-  };
-
   return (
     <div className="messages-container">
       {messages.map((message, index) => (
         <div
           key={index}
-          className={`message-row ${message.isUser ? 'user' : 'bot'}`}
+          className={`message-row ${message.isUser ? 'user' : 'bot'} ${message.error ? 'error' : ''}`}
         >
           {!message.isUser && (
             <img
@@ -46,11 +79,18 @@ const MessagesContainer: React.FC<MessagesContainerProps> = ({
           )}
           <div className={`message-bubble ${message.isUser ? 'user' : 'bot'}`}>
             <div className="message-text">
-              {formatText(message.text)}
+              {message.error ? (
+                <ErrorMessage />
+              ) : (
+                <div className="message-content">
+                  <ReactMarkdown>{message.text}</ReactMarkdown>
+                </div>
+              )}
             </div>
             {message.qrCode && (
               <div className="qr-code-container">
                 <QRCodeSVG value={message.qrCode} size={200} />
+                <CopyButton text={message.qrCode} />
               </div>
             )}
           </div>

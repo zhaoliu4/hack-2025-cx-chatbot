@@ -198,6 +198,10 @@
   align-items: center;
   gap: 8px;
   margin-left: 44px;
+  padding: 8px 16px;
+  background-color: #f8f9fa;
+  border-radius: 16px;
+  width: fit-content;
 }
 
 .loading-dot {
@@ -205,6 +209,7 @@
   height: 8px;
   background-color: #666;
   border-radius: 50%;
+  opacity: 0.6;
 }
 
 .loading-dot:nth-child(1) {
@@ -222,4 +227,122 @@
 @keyframes bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #dc3545;
+  font-size: 14px;
+}
+
+.error-message svg {
+  flex-shrink: 0;
+}
+
+.message-row.error .message-bubble {
+  background-color: #fff5f5;
+  border: 1px solid #ffebeb;
+}
+
+.message-content {
+  position: relative;
+}
+
+.copy-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background-color: #f0f0f0;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #666;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.copy-button:hover {
+  background-color: #e0e0e0;
+}
+
+.copy-button svg {
+  display: block;
+}
+
+.copy-tooltip {
+  position: absolute;
+  top: -24px;
+  right: 0;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.copy-button:hover .copy-tooltip {
+  opacity: 1;
+}
+
+/* Markdown Styles */
+.message-text {
+  position: relative;
+}
+
+.message-text p {
+  margin: 0 0 8px 0;
+}
+
+.message-text p:last-child {
+  margin-bottom: 0;
+}
+
+.message-text ul, .message-text ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.message-text code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.message-text pre {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.message-text pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.message-text a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.message-text a:hover {
+  text-decoration: underline;
+}
+
+.qr-code-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
 } 
