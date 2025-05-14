@@ -1,3 +1,4 @@
+import httpx
 import openai
 import os
 import json
@@ -9,6 +10,8 @@ OPENROUTER_API_KEY = "sk-or-v1-0c470946cd2211fe0b04061083b54b901fa221a0f319cd73e
 # Configure OpenAI with OpenRouter
 openai.api_key = OPENROUTER_API_KEY
 openai.api_base = "https://openrouter.ai/api/v1"
+
+HTTP_MCP_SERVER_URL = os.environ.get("HTTP_MCP_SERVER_URL", "http://localhost:53000/mcp")
 
 # Define the system prompt separately for clarity
 SYSTEM_PROMPT = {
@@ -24,6 +27,70 @@ SYSTEM_PROMPT = {
         "Be courteous and professional in all your responses."
     )
 }
+
+def transform_jsonrpc_to_openrouter_tools(jsonrpc_response):
+    """
+    Transform the JSON-RPC tools response format to OpenRouter tools format.
+
+    Args:
+        jsonrpc_response: The response from the list_tools_jsonrpc call
+
+    Returns:
+        List of tools in OpenRouter format
+    """
+    openrouter_tools = []
+
+    # Check if we have a valid response with tools
+    if (jsonrpc_response and
+            "result" in jsonrpc_response and
+            "tools" in jsonrpc_response["result"]):
+
+        # Process each tool
+        for tool in jsonrpc_response["result"]["tools"]:
+            openrouter_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["inputSchema"]  # Map inputSchema to parameters
+                }
+            })
+
+    return openrouter_tools
+
+async def list_tools():
+    """Make a direct JSON-RPC request to the MCP server to list tools."""
+    url = HTTP_MCP_SERVER_URL
+
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "roots": {
+                    "listChanged": True
+                }
+            },
+            "clientInfo": {
+                "name": "mcp",
+                "version": "0.1.0"
+            }
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+
+            return transform_jsonrpc_to_openrouter_tools(response.json())
+    except Exception as e:
+        print(f"Error making JSON-RPC request to MCP server: {str(e)}")
+        return {"error": str(e)}
+
+
 
 def get_return_status_response_with_history(chat_history, customer_query):
     """
@@ -112,20 +179,9 @@ async def get_return_status_response_with_tools(chat_history, customer_query, mc
     current_conversation.append({"role": "user", "content": customer_query})
 
     try:
-        # Get available tools from MCP
-        tools = await mcp_client.list_tools()
-        
-        # Format tools for OpenAI
-        openai_tools = []
-        for tool in tools:
-            openai_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["parameters"]
-                }
-            })
+
+        # Get relevant tools from MCP server
+        openai_tools = await list_tools()
 
         # Request the model with tools enabled
         completion = openai.ChatCompletion.create(

@@ -43,7 +43,7 @@ class LLMResponse(BaseModel):
 mcp_client = None
 
 # OpenRouter client setup
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # HTTP MCP server settings
@@ -56,8 +56,70 @@ async def handle_sampling_message(message):
     logger.info(f"Sampling: {message.get('text', '')}")
 
 
-# Global variables to properly manage MCP resources
-mcp_client = None
+
+def transform_jsonrpc_to_openrouter_tools(jsonrpc_response):
+    """
+    Transform the JSON-RPC tools response format to OpenRouter tools format.
+
+    Args:
+        jsonrpc_response: The response from the list_tools_jsonrpc call
+
+    Returns:
+        List of tools in OpenRouter format
+    """
+    openrouter_tools = []
+
+    # Check if we have a valid response with tools
+    if (jsonrpc_response and
+            "result" in jsonrpc_response and
+            "tools" in jsonrpc_response["result"]):
+
+        # Process each tool
+        for tool in jsonrpc_response["result"]["tools"]:
+            openrouter_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["inputSchema"]  # Map inputSchema to parameters
+                }
+            })
+
+    return openrouter_tools
+
+async def list_tools():
+    """Make a direct JSON-RPC request to the MCP server to list tools."""
+    url = HTTP_MCP_SERVER_URL
+
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "roots": {
+                    "listChanged": True
+                }
+            },
+            "clientInfo": {
+                "name": "mcp",
+                "version": "0.1.0"
+            }
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+
+            return transform_jsonrpc_to_openrouter_tools(response.json())
+    except Exception as e:
+        logger.error(f"Error making JSON-RPC request to MCP server: {str(e)}")
+        return {"error": str(e)}
+
+
 
 # Use FastAPI's startup and shutdown events instead of lifespan
 @app.on_event("startup")
@@ -65,14 +127,9 @@ async def startup_event():
     global mcp_client
     # Startup: Initialize HTTP MCP client
     try:
-        # Create HTTP MCP client
-        mcp_client = MCPHTTPClient(
-            base_url=HTTP_MCP_SERVER_URL,
-            sampling_callback=handle_sampling_message
-        )
-
-        # Initialize the connection
-        await mcp_client.initialize()
+        logger.info("initializing mcp client")
+        tools = await list_tools()
+        logger.info(f"MCP tools list: {tools}")
         logger.info(f"HTTP MCP client initialized successfully, connected to {HTTP_MCP_SERVER_URL}")
     except Exception as e:
         logger.error(f"Failed to initialize HTTP MCP client: {str(e)}")
@@ -95,26 +152,10 @@ async def generate_text(request: LLMRequest):
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
 
-    if not mcp_client:
-        raise HTTPException(status_code=500, detail="MCP client not initialized")
-
     try:
         # Get relevant tools from MCP server
-        tools = await mcp_client.list_tools()
+        tools = await list_tools()
 
-        # Format tools for OpenRouter if needed
-        openrouter_tools = []
-        if tools and not request.tools:
-            # Convert MCP tools to OpenRouter format
-            for tool in tools:
-                openrouter_tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": tool["name"],
-                        "description": tool["description"],
-                        "parameters": tool["parameters"]
-                    }
-                })
 
         # Create request payload for OpenRouter
         payload = {
@@ -127,10 +168,11 @@ async def generate_text(request: LLMRequest):
         # Add tools if provided in the request or from MCP
         if request.tools:
             payload["tools"] = request.tools
-        elif openrouter_tools:
-            payload["tools"] = openrouter_tools
+        elif tools:
+            payload["tools"] = tools
 
-        # Send request to OpenRouter
+        print(f'OPEN ROUTER URL: {OPENROUTER_URL}')
+        print(f'OPENROUTER_API_KEY: {OPENROUTER_API_KEY}')        # Send request to OpenRouter
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 OPENROUTER_URL,
@@ -177,8 +219,6 @@ async def execute_tool(tool_call_data: dict):
 @app.post("/chat")
 async def chat(request: Request):
     """Chat endpoint that supports tool usage via MCP"""
-    if not mcp_client:
-        raise HTTPException(status_code=500, detail="MCP client not initialized")
         
     try:
         data = await request.json()
