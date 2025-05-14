@@ -13,6 +13,11 @@ interface StoredChat {
   lastUpdated: number;
 }
 
+interface ChatHistory {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 const ChatBox = () => {
   const initialMessage: Message = {
     text: "Hi, I'm the Happy Returns Support Agent, how can I help you today?",
@@ -54,6 +59,7 @@ const ChatBox = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [chatId, setChatId] = useState<string | null>(storedChat?.chatId || null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
 
   // Save to localStorage whenever messages or chatId changes
   useEffect(() => {
@@ -96,25 +102,8 @@ const ChatBox = () => {
     }
   };
 
-  const formatChatHistory = () => {
-    const history = [];
-    for (let i = 1; i < messages.length; i += 2) {
-      const interaction = {
-        user_message: messages[i]?.text || '',
-        bot_response: messages[i + 1]?.text || ''
-      };
-      history.push(interaction);
-    }
-    return history;
-  };
-
   const handleSendMessage = async () => {
     if (inputMessage.trim() === '') return;
-
-    // Create new chat if no chatId exists
-    if (!chatId) {
-      await handleNewChat();
-    }
 
     const newMessage: Message = {
       text: inputMessage,
@@ -127,15 +116,13 @@ const ChatBox = () => {
     setIsLoading(true);
 
     try {
-      const chatHistory = formatChatHistory();
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          chat_id: chatId,
-          current_message: inputMessage,
+          message: inputMessage,
           chat_history: chatHistory
         })
       });
@@ -145,10 +132,9 @@ const ChatBox = () => {
       }
 
       const data = await response.json();
-      // Handle first message chat ID assignment
-      if (!chatId && data.chat_id) {
-        setChatId(data.chat_id);
-      }
+      
+      // Update chat history
+      setChatHistory(data.chat_history || []);
       
       const botResponse: Message = {
         text: data.response || "Sorry, I'm having trouble responding right now.",
