@@ -243,15 +243,46 @@ func (tm *toolsManager) RunReturnAnalyticalQueryToolHandler(ctx context.Context,
 		return nil, errors.New("query must be a string")
 	}
 
-	var result interface{}
-	err := tm.db.Debug().Raw(query).Scan(&result).Error
+	rows, err := tm.db.Debug().Raw(query).Rows()
 	if err != nil {
-		tm.logger.WithError(err).Error("Failed to run analytical query")
 		return nil, err
 	}
-	tm.logger.Info("Analytical query result: ", result)
+	defer rows.Close()
 
-	jsonResult, err := json.Marshal(result)
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, err
+		}
+
+		rowMap := make(map[string]interface{})
+		for i, col := range columns {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				rowMap[col] = string(b)
+			} else {
+				rowMap[col] = val
+			}
+		}
+
+		results = append(results, rowMap)
+	}
+
+	tm.logger.Info("Analytical query result: ", results)
+
+	jsonResult, err := json.Marshal(results)
 	if err != nil {
 		tm.logger.WithError(err).Error("Failed to marshal query result to JSON")
 		return nil, err
