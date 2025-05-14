@@ -1,0 +1,2 @@
+- Our python server uses a virtual environment that can be found inside `.llm-server/venv`.
+- The server is built using the FastAPI framework and is designed to handle requests from the frontend and communicate with the mcp server and llm.

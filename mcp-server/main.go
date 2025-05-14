@@ -2,8 +2,10 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -14,7 +16,28 @@ import (
 )
 
 func main() {
-	os.Setenv("DATABASE_CONNECTION_STRING", "postgres://username:password@db-dev.happyreturns.com/happyreturns")
+	// Get the executable path
+	exePath, err := os.Executable()
+	if err != nil {
+		println("Error getting executable path:", err.Error())
+	}
+
+	// Get the directory of the executable
+	exeDir := filepath.Dir(exePath)
+
+	// Move up one directory to the project root (from mcp-server to root)
+	rootDir := filepath.Dir(exeDir)
+
+	// Load .env from the root directory
+	err = godotenv.Load(filepath.Join(rootDir, ".env"))
+	if err != nil {
+		// Try loading from current directory as fallback
+		err = godotenv.Load()
+		if err != nil {
+			// Log error but continue as environment variables might be set elsewhere
+			println("Error loading .env file:", err.Error())
+		}
+	}
 
 	app := "mcp-server"
 	logger := log.NewLogger(app, "local")
@@ -80,6 +103,7 @@ func main() {
 	s.AddTool(getReturnByConfirmationCodeTool, toolsManager.GetReturnByConfirmationCodeToolHandler)
 	s.AddTool(runReturnAnalyticalQueryTool, toolsManager.RunReturnAnalyticalQueryToolHandler)
 
+	logger.Info("starting mcp server")
 	// // Start the stdio server
 	if err := server.ServeStdio(s); err != nil {
 		logger.Fatalf("Server error: %v\n", err)
